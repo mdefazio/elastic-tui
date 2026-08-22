@@ -23,7 +23,7 @@ export function BrowseIndices({ ctx }: { ctx: ElasticContext }) {
         const cat = await client.cat.indices({ format: "json", h: "index" });
         const indices = (cat as Array<{ index?: string }>)
           .map((r) => r.index)
-          .filter((i): i is string => Boolean(i) && !i.startsWith("."))
+          .filter((i): i is string => typeof i === "string" && !i.startsWith("."))
           .sort();
         if (!cancelled) {
           setState(
