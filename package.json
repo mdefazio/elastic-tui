@@ -1,0 +1,29 @@
+{
+  "name": "elastic-tui",
+  "version": "0.1.0",
+  "description": "Demo-scoped TUI prototype for the Elastic CLI (elastic tui extension)",
+  "type": "module",
+  "bin": {
+    "elastic-tui": "./bin/elastic-tui.mjs"
+  },
+  "scripts": {
+    "dev": "tsx src/index.tsx",
+    "start": "node ./bin/elastic-tui.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.14.0",
+    "@inkjs/ui": "^2.0.0",
+    "ink": "^5.0.1",
+    "react": "^18.3.1",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "typescript": "^5.5.4"
+  }
+}
