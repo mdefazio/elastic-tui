@@ -17,18 +17,18 @@ export interface Command {
 export const COMMANDS: Command[] = [
   // Common
   {
+    path: "quick search",
+    desc: "Browse an index and run a saved query (opinionated TUI flow)",
+    group: "common",
+    action: "browse",
+  },
+  {
     path: "es",
     aliases: ["elasticsearch"],
     desc: "Elasticsearch APIs (search, indices, ingest, …)",
     group: "common",
     action: "es",
     subcommands: ["search", "indices", "cat", "cluster", "inference", "esql"],
-  },
-  {
-    path: "es search",
-    desc: "Run a search against an index",
-    group: "common",
-    action: "browse",
   },
   {
     path: "kb",

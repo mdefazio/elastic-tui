@@ -27,4 +27,9 @@ if (!interactive) {
   process.exit(0);
 }
 
-render(<App ctx={ctx} />);
+// A flow can "emit" a command on exit — we print it to the terminal after the
+// TUI tears down, so it lands in your scrollback ready to copy, edit, or run.
+let emitted: string | null = null;
+const app = render(<App ctx={ctx} onEmit={(cmd) => (emitted = cmd)} />);
+await app.waitUntilExit();
+if (emitted) process.stdout.write(`\n${emitted}\n`);
