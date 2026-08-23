@@ -12,14 +12,17 @@ export function App({ ctx }: { ctx: ElasticContext }) {
   const { exit } = useApp();
   const [screen, setScreen] = useState<Screen>("menu");
 
-  // Global escape hatch back to the menu / out of the app.
+  // The home menu owns escape/quit. Sub-flows own their own escape (they run a
+  // back-stack) and call `onBack` when they're at their root.
   useInput((input, key) => {
-    if (input === "q" && screen === "menu") exit();
-    if (key.escape) setScreen("menu");
+    if (screen !== "menu") return;
+    if (input === "q" || key.escape) exit();
   });
 
-  if (screen === "browse") return <BrowseIndices ctx={ctx} />;
-  if (screen === "context") return <ContextView ctx={ctx} />;
+  const goHome = () => setScreen("menu");
+
+  if (screen === "browse") return <BrowseIndices ctx={ctx} onBack={goHome} />;
+  if (screen === "context") return <ContextView ctx={ctx} onBack={goHome} />;
 
   return (
     <Box flexDirection="column" paddingY={1}>
@@ -32,7 +35,7 @@ export function App({ ctx }: { ctx: ElasticContext }) {
 
       <Select
         options={[
-          { label: "Browse indices → search", value: "browse" },
+          { label: "Browse indices", value: "browse" },
           { label: "Show connection context", value: "context" },
           { label: "Quit", value: "quit" },
         ]}
@@ -43,7 +46,7 @@ export function App({ ctx }: { ctx: ElasticContext }) {
       />
 
       <Box marginTop={1}>
-        <Text dimColor>↑/↓ to move · enter to select · esc to go back · q to quit</Text>
+        <Text dimColor>↑/↓ to move · enter to select · esc/q to quit</Text>
       </Box>
     </Box>
   );

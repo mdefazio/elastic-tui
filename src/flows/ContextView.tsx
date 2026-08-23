@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useInput } from "ink";
 import type { ElasticContext } from "../context.js";
 
 function Row({ label, value }: { label: string; value?: string }) {
@@ -17,7 +17,17 @@ function mask(value: string, label: string): string {
   return label.toLowerCase().includes("key") ? value.slice(0, 6) + "…" : value;
 }
 
-export function ContextView({ ctx }: { ctx: ElasticContext }) {
+export function ContextView({
+  ctx,
+  onBack,
+}: {
+  ctx: ElasticContext;
+  onBack: () => void;
+}) {
+  useInput((_input, key) => {
+    if (key.escape) onBack();
+  });
+
   return (
     <Box flexDirection="column" paddingY={1}>
       <Text bold color="cyan">

@@ -1,0 +1,10 @@
+{
+  "query": {
+    "multi_match": {
+      "query": "brave new world",
+      "fields": ["title", "authors", "description"]
+    }
+  },
+  "_source": ["title", "authors", "description"],
+  "size": 10
+}
