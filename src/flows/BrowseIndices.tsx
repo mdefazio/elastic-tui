@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Box, Text, useInput } from "ink";
-import { Select, Spinner } from "@inkjs/ui";
+import { Select, Spinner, TextInput } from "@inkjs/ui";
 import type { ElasticContext } from "../context.js";
 import { createEsClient } from "../esClient.js";
 
@@ -16,6 +16,15 @@ type Phase =
   | { k: "pick-index" }
   | { k: "menu"; index: string }
   | { k: "queries"; index: string; files: string[] }
+  | {
+      k: "prompt";
+      index: string;
+      file: string;
+      raw: string;
+      tokens: string[];
+      values: Record<string, string>;
+      current: number;
+    }
   | { k: "searching"; index: string }
   | {
       k: "results";
@@ -94,11 +103,39 @@ export function BrowseIndices({
     }
   }
 
-  async function runQuery(index: string, file: string) {
+  // Selecting a query: if it contains {{variables}}, prompt for each before
+  // running; otherwise run it straight.
+  function beginQuery(index: string, file: string) {
+    try {
+      const raw = readFileSync(QUERIES_DIR + file, "utf8");
+      const tokens = scanTokens(raw);
+      if (!tokens.length) {
+        runQuery(index, file);
+        return;
+      }
+      setPhase({ k: "prompt", index, file, raw, tokens, values: {}, current: 0 });
+    } catch (err) {
+      setPhase({ k: "error", message: (err as Error).message, back: "menu", index });
+    }
+  }
+
+  function submitValue(value: string) {
+    if (phase.k !== "prompt") return;
+    const values = { ...phase.values, [phase.tokens[phase.current]!]: value };
+    if (phase.current + 1 < phase.tokens.length) {
+      setPhase({ ...phase, values, current: phase.current + 1 });
+    } else {
+      const filled = substitute(phase.raw, values);
+      runQuery(phase.index, phase.file, filled);
+    }
+  }
+
+  // `override` is pre-substituted JSON text (templated queries); otherwise the
+  // file is re-read fresh so any edits you made since selecting it land.
+  async function runQuery(index: string, file: string, override?: string) {
     setPhase({ k: "searching", index });
     try {
-      // Re-read fresh so any edits you made to the file since selecting it land.
-      const raw = readFileSync(QUERIES_DIR + file, "utf8");
+      const raw = override ?? readFileSync(QUERIES_DIR + file, "utf8");
       const body = JSON.parse(raw) as Record<string, unknown>;
       const client = createEsClient(ctx);
       // `meta: true` returns the HTTP envelope (status code + headers) around
@@ -191,7 +228,9 @@ export function BrowseIndices({
       if (key.escape) openMenu(phase.index);
       else if (key.upArrow) setHighlight((h) => (h - 1 + n) % n);
       else if (key.downArrow) setHighlight((h) => (h + 1) % n);
-      else if (key.return) runQuery(phase.index, phase.files[highlight]!);
+      else if (key.return) beginQuery(phase.index, phase.files[highlight]!);
+    } else if (phase.k === "prompt") {
+      if (key.escape) startSearch(phase.index);
     } else if (phase.k === "results") {
       if (key.escape) openMenu(phase.index);
     } else if (phase.k === "fields" || phase.k === "settings") {
@@ -324,6 +363,36 @@ export function BrowseIndices({
         </Box>
         <Box marginTop={1}>
           <Text dimColor>↑/↓ move · enter run · esc back</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (phase.k === "prompt") {
+    const token = phase.tokens[phase.current]!;
+    return (
+      <Box flexDirection="column" paddingY={1}>
+        <Text bold color="cyan">
+          {phase.file}
+        </Text>
+        <Text dimColor>
+          variable {phase.current + 1} of {phase.tokens.length}
+        </Text>
+        {phase.tokens.slice(0, phase.current).map((t) => (
+          <Text key={t} dimColor>
+            {t}: {phase.values[t]}
+          </Text>
+        ))}
+        <Box marginTop={1}>
+          <Text color="magenta">{token}: </Text>
+          <TextInput
+            key={token}
+            placeholder={`value for {{${token}}}`}
+            onSubmit={submitValue}
+          />
+        </Box>
+        <Box marginTop={1}>
+          <Text dimColor>enter to continue · esc back</Text>
         </Box>
       </Box>
     );
@@ -498,6 +567,29 @@ function readPreview(path: string, n: number): string[] {
 
 function truncate(s: string, n = 20): string {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+// Find unique {{variable}} tokens in a query file, in first-seen order.
+function scanTokens(raw: string): string[] {
+  const re = /\{\{\s*([\w.-]+)\s*\}\}/g;
+  const seen: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw))) {
+    if (!seen.includes(m[1]!)) seen.push(m[1]!);
+  }
+  return seen;
+}
+
+// Replace {{token}} occurrences with the entered value, escaped so it stays
+// valid JSON when the placeholder sits inside a quoted string.
+function substitute(raw: string, values: Record<string, string>): string {
+  let out = raw;
+  for (const [key, val] of Object.entries(values)) {
+    const re = new RegExp(`\\{\\{\\s*${key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\}\\}`, "g");
+    const escaped = val.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    out = out.replace(re, escaped);
+  }
+  return out;
 }
 
 function statusText(code: number): string {
