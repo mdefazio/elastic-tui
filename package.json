@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "tsx src/index.tsx",
     "start": "node ./bin/elastic-tui.mjs",
+    "gen:flags": "node scripts/gen-flags.mjs",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

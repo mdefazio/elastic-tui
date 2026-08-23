@@ -18,24 +18,12 @@ type Route =
   | { k: "status" }
   | { k: "info"; cmd: Command };
 
-export function App({
-  ctx,
-  onEmit,
-}: {
-  ctx: ElasticContext;
-  onEmit: (command: string) => void;
-}) {
+export function App({ ctx }: { ctx: ElasticContext }) {
   const { exit } = useApp();
   const [route, setRoute] = useState<Route>({ k: "palette" });
 
   const goHome = () => setRoute({ k: "palette" });
   const connection = hasEsConnection(ctx) ? ctx.es.url! : "no active ES context";
-
-  // Emit a command to the terminal and quit the TUI.
-  const runInTerminal = (command: string) => {
-    onEmit(command);
-    exit();
-  };
 
   function onSelect(cmd: Command) {
     switch (cmd.action) {
@@ -53,7 +41,7 @@ export function App({
   }
 
   if (route.k === "es")
-    return <EsCommands onRun={runInTerminal} onBack={goHome} />;
+    return <EsCommands onBack={goHome} />;
   if (route.k === "browse") return <BrowseIndices ctx={ctx} onBack={goHome} />;
   if (route.k === "context") return <ContextView ctx={ctx} onBack={goHome} />;
   if (route.k === "status") return <Status ctx={ctx} onBack={goHome} />;

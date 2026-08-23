@@ -1,6 +1,38 @@
+import { readFileSync } from "node:fs";
+
 // Catalog of `elastic es` commands, from `elastic es --help` (@elastic/cli
-// v0.4.0). `route: "open"` marks the commands the TUI wires into the live index
-// flow; everything else is browsable with its CLI invocation shown.
+// v0.4.0). Flags and subcommands per command come from `elastic cli-schema`
+// (baked into esFlags.json) so the detail pane can show real options.
+
+export interface EsFlag {
+  name: string;
+  type: string;
+  required: boolean;
+  summary: string;
+}
+
+const schema = JSON.parse(
+  readFileSync(new URL("./esFlags.json", import.meta.url), "utf8")
+) as { flags: Record<string, EsFlag[]>; subs: Record<string, string[]> };
+
+export function getFlags(name: string): EsFlag[] {
+  const flags = schema.flags[name] ?? [];
+  // Required first, then alphabetical.
+  return [...flags].sort(
+    (a, b) => Number(b.required) - Number(a.required) || a.name.localeCompare(b.name)
+  );
+}
+
+export function getSubcommands(name: string): string[] {
+  return schema.subs[name] ?? [];
+}
+
+// Build a copy-pasteable invocation: base command plus any required flags.
+export function invocation(name: string): string {
+  const required = getFlags(name).filter((f) => f.required);
+  const args = required.map((f) => ` --${f.name} <${f.type}>`).join("");
+  return `elastic es ${name}${args}`;
+}
 
 export interface EsCommand {
   name: string;
