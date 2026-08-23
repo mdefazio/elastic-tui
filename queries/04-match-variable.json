@@ -1,9 +1,0 @@
-{
-  "query": {
-    "match": {
-      "title": "{{term}}"
-    }
-  },
-  "_source": ["title", "authors", "description"],
-  "size": 10
-}

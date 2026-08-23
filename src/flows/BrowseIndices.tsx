@@ -16,6 +16,7 @@ type Phase =
   | { k: "pick-index" }
   | { k: "menu"; index: string }
   | { k: "queries"; index: string; files: string[] }
+  | { k: "query-view"; index: string; files: string[]; file: string; contents: string }
   | {
       k: "prompt";
       index: string;
@@ -33,6 +34,9 @@ type Phase =
       hits: Array<Record<string, unknown>>;
       fields: string[] | null;
       metrics: { status: number; total: number; relation: string; latencyMs: number };
+      origin:
+        | { k: "queries" }
+        | { k: "prompt"; file: string; raw: string; tokens: string[] };
     }
   | { k: "detail-loading"; index: string; title: string }
   | { k: "fields"; index: string; rows: Array<{ name: string; type: string }> }
@@ -51,6 +55,7 @@ export function BrowseIndices({
   const [filter, setFilter] = useState("");
   const [highlight, setHighlight] = useState(0);
   const [scroll, setScroll] = useState(0);
+  const [fieldFilter, setFieldFilter] = useState("");
 
   // Load the index list on mount.
   useEffect(() => {
@@ -126,16 +131,24 @@ export function BrowseIndices({
       setPhase({ ...phase, values, current: phase.current + 1 });
     } else {
       const filled = substitute(phase.raw, values);
-      runQuery(phase.index, phase.file, filled);
+      runQuery(phase.index, phase.file, {
+        override: filled,
+        prompt: { raw: phase.raw, tokens: phase.tokens },
+      });
     }
   }
 
   // `override` is pre-substituted JSON text (templated queries); otherwise the
   // file is re-read fresh so any edits you made since selecting it land.
-  async function runQuery(index: string, file: string, override?: string) {
+  // `prompt` records the variable prompt so esc from results returns to it.
+  async function runQuery(
+    index: string,
+    file: string,
+    opts?: { override?: string; prompt?: { raw: string; tokens: string[] } }
+  ) {
     setPhase({ k: "searching", index });
     try {
-      const raw = override ?? readFileSync(QUERIES_DIR + file, "utf8");
+      const raw = opts?.override ?? readFileSync(QUERIES_DIR + file, "utf8");
       const body = JSON.parse(raw) as Record<string, unknown>;
       const client = createEsClient(ctx);
       // `meta: true` returns the HTTP envelope (status code + headers) around
@@ -164,6 +177,9 @@ export function BrowseIndices({
         hits,
         fields,
         metrics: { status, total, relation, latencyMs },
+        origin: opts?.prompt
+          ? { k: "prompt", file, raw: opts.prompt.raw, tokens: opts.prompt.tokens }
+          : { k: "queries" },
       });
     } catch (err) {
       setPhase({ k: "error", message: (err as Error).message, back: "menu", index });
@@ -178,6 +194,7 @@ export function BrowseIndices({
       const mappings = (resp[index] ?? Object.values(resp)[0])?.mappings ?? {};
       const rows = listFields(mappings.properties ?? {});
       setScroll(0);
+      setFieldFilter("");
       setPhase({
         k: "fields",
         index,
@@ -229,13 +246,57 @@ export function BrowseIndices({
       else if (key.upArrow) setHighlight((h) => (h - 1 + n) % n);
       else if (key.downArrow) setHighlight((h) => (h + 1) % n);
       else if (key.return) beginQuery(phase.index, phase.files[highlight]!);
+      else if (input === " ") {
+        const file = phase.files[highlight];
+        if (file) {
+          const contents = readFileSync(QUERIES_DIR + file, "utf8");
+          setScroll(0);
+          setPhase({ k: "query-view", index: phase.index, files: phase.files, file, contents });
+        }
+      }
+    } else if (phase.k === "query-view") {
+      const maxScroll = Math.max(0, phase.contents.split(/\r?\n/).length - DETAIL_LINES);
+      if (key.escape) setPhase({ k: "queries", index: phase.index, files: phase.files });
+      else if (key.return) beginQuery(phase.index, phase.file);
+      else if (key.upArrow) setScroll((s) => Math.max(0, s - 1));
+      else if (key.downArrow) setScroll((s) => Math.min(maxScroll, s + 1));
+      else if (key.pageUp) setScroll((s) => Math.max(0, s - DETAIL_LINES));
+      else if (key.pageDown) setScroll((s) => Math.min(maxScroll, s + DETAIL_LINES));
     } else if (phase.k === "prompt") {
       if (key.escape) startSearch(phase.index);
     } else if (phase.k === "results") {
-      if (key.escape) openMenu(phase.index);
-    } else if (phase.k === "fields" || phase.k === "settings") {
-      const total = phase.k === "fields" ? phase.rows.length : phase.lines.length;
+      if (key.escape) {
+        if (phase.origin.k === "prompt") {
+          setPhase({
+            k: "prompt",
+            index: phase.index,
+            file: phase.origin.file,
+            raw: phase.origin.raw,
+            tokens: phase.origin.tokens,
+            values: {},
+            current: 0,
+          });
+        } else {
+          startSearch(phase.index);
+        }
+      }
+    } else if (phase.k === "fields") {
+      const total = filterFields(phase.rows, fieldFilter).length;
       const maxScroll = Math.max(0, total - DETAIL_LINES);
+      if (key.escape) openMenu(phase.index);
+      else if (key.upArrow) setScroll((s) => Math.max(0, s - 1));
+      else if (key.downArrow) setScroll((s) => Math.min(maxScroll, s + 1));
+      else if (key.pageUp) setScroll((s) => Math.max(0, s - DETAIL_LINES));
+      else if (key.pageDown) setScroll((s) => Math.min(maxScroll, s + DETAIL_LINES));
+      else if (key.backspace || key.delete) {
+        setFieldFilter((f) => f.slice(0, -1));
+        setScroll(0);
+      } else if (input && !key.ctrl && !key.meta && !key.tab) {
+        setFieldFilter((f) => f + input);
+        setScroll(0);
+      }
+    } else if (phase.k === "settings") {
+      const maxScroll = Math.max(0, phase.lines.length - DETAIL_LINES);
       if (key.escape) openMenu(phase.index);
       else if (key.upArrow || input === "k") setScroll((s) => Math.max(0, s - 1));
       else if (key.downArrow || input === "j") setScroll((s) => Math.min(maxScroll, s + 1));
@@ -362,14 +423,34 @@ export function BrowseIndices({
           </Box>
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>↑/↓ move · enter run · esc back</Text>
+          <Text dimColor>↑/↓ move · space view full · enter run · esc back</Text>
         </Box>
+      </Box>
+    );
+  }
+
+  if (phase.k === "query-view") {
+    const lines = phase.contents.split(/\r?\n/);
+    const shown = lines.slice(scroll, scroll + DETAIL_LINES);
+    return (
+      <Box flexDirection="column" paddingY={1}>
+        <Text bold color="cyan">
+          {phase.file}
+        </Text>
+        <Text dimColor>{rangeLabel(scroll, shown.length, lines.length)} lines</Text>
+        <Box marginY={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+          {shown.map((ln, i) => (
+            <Text key={i}>{ln.length ? ln : " "}</Text>
+          ))}
+        </Box>
+        <Text dimColor>↑/↓ scroll · enter run · esc back</Text>
       </Box>
     );
   }
 
   if (phase.k === "prompt") {
     const token = phase.tokens[phase.current]!;
+    const fields = queryFields(phase.raw)[token] ?? [];
     return (
       <Box flexDirection="column" paddingY={1}>
         <Text bold color="cyan">
@@ -383,13 +464,18 @@ export function BrowseIndices({
             {t}: {phase.values[t]}
           </Text>
         ))}
-        <Box marginTop={1}>
-          <Text color="magenta">{token}: </Text>
-          <TextInput
-            key={token}
-            placeholder={`value for {{${token}}}`}
-            onSubmit={submitValue}
-          />
+        <Box marginTop={1} flexDirection="column">
+          {fields.length > 0 && (
+            <Text dimColor>searches: {fields.join(", ")}</Text>
+          )}
+          <Box>
+            <Text color="magenta">{token}: </Text>
+            <TextInput
+              key={token}
+              placeholder={`value for {{${token}}}`}
+              onSubmit={submitValue}
+            />
+          </Box>
         </Box>
         <Box marginTop={1}>
           <Text dimColor>enter to continue · esc back</Text>
@@ -413,15 +499,24 @@ export function BrowseIndices({
     );
 
   if (phase.k === "fields") {
-    const total = phase.rows.length;
-    const shown = phase.rows.slice(scroll, scroll + DETAIL_LINES);
+    const rows = filterFields(phase.rows, fieldFilter);
+    const total = rows.length;
+    const shown = rows.slice(scroll, scroll + DETAIL_LINES);
     const nameW = Math.min(44, Math.max(9, ...phase.rows.map((r) => r.name.length)));
     return (
       <Box flexDirection="column" paddingY={1}>
         <Text bold color="cyan">
           Fields — {phase.index}
         </Text>
-        <Text dimColor>{rangeLabel(scroll, shown.length, total)} fields</Text>
+        <Box>
+          <Text>filter: </Text>
+          <Text color="yellow">{fieldFilter}</Text>
+          <Text inverse> </Text>
+          <Text dimColor>
+            {"   "}
+            {rangeLabel(scroll, shown.length, total)} of {phase.rows.length}
+          </Text>
+        </Box>
         <Box marginTop={1} flexDirection="column">
           <Box>
             <Box width={nameW + 2}>
@@ -434,6 +529,7 @@ export function BrowseIndices({
             {"  "}
             {"─".repeat(12)}
           </Text>
+          {shown.length === 0 && <Text dimColor>(no matching fields)</Text>}
           {shown.map((r, i) => (
             <Box key={i}>
               <Box width={nameW + 2}>
@@ -444,7 +540,7 @@ export function BrowseIndices({
           ))}
         </Box>
         <Box marginTop={1}>
-          <Text dimColor>↑/↓ scroll · pgup/pgdn page · esc back to {phase.index}</Text>
+          <Text dimColor>type to filter · ↑/↓ scroll · pgup/pgdn page · esc back</Text>
         </Box>
       </Box>
     );
@@ -516,9 +612,23 @@ export function BrowseIndices({
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text dimColor>esc back to {phase.index}</Text>
+        <Text dimColor>
+          esc back to {phase.origin.k === "prompt" ? "variables" : "queries"}
+        </Text>
       </Box>
     </Box>
+  );
+}
+
+// Filter mapping rows by field name or type (case-insensitive substring).
+function filterFields(
+  rows: Array<{ name: string; type: string }>,
+  query: string
+): Array<{ name: string; type: string }> {
+  const q = query.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(
+    (r) => r.name.toLowerCase().includes(q) || r.type.toLowerCase().includes(q)
   );
 }
 
@@ -578,6 +688,47 @@ function scanTokens(raw: string): string[] {
     if (!seen.includes(m[1]!)) seen.push(m[1]!);
   }
   return seen;
+}
+
+// Work out which field(s) each {{token}} searches, by walking the query and
+// noting the fields on the match/multi_match clause that contains the token.
+function queryFields(raw: string): Record<string, string[]> {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  const out: Record<string, Set<string>> = {};
+  const add = (token: string, fields: string[]) => {
+    out[token] ??= new Set();
+    fields.forEach((f) => out[token]!.add(f));
+  };
+  const walk = (node: any) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (!node || typeof node !== "object") return;
+    for (const [key, val] of Object.entries<any>(node)) {
+      if (key === "multi_match" && val && typeof val === "object") {
+        const fields = Array.isArray(val.fields) ? val.fields.map(String) : [];
+        scanTokens(String(val.query ?? "")).forEach((t) => add(t, fields));
+      } else if (
+        (key === "match" || key === "match_phrase" || key === "match_phrase_prefix" || key === "term") &&
+        val &&
+        typeof val === "object"
+      ) {
+        for (const [field, fv] of Object.entries<any>(val)) {
+          const text = fv && typeof fv === "object" ? String(fv.query ?? "") : String(fv);
+          scanTokens(text).forEach((t) => add(t, [field]));
+        }
+      } else {
+        walk(val);
+      }
+    }
+  };
+  walk(obj);
+  const res: Record<string, string[]> = {};
+  for (const [t, s] of Object.entries(out)) res[t] = [...s];
+  return res;
 }
 
 // Replace {{token}} occurrences with the entered value, escaped so it stays
