@@ -22,7 +22,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
   const [dQuery, setDQuery] = useState("");
   const [dHi, setDHi] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
-  const [revealed, setRevealed] = useState<string | null>(null);
+  const [printed, setPrinted] = useState<string | null>(null);
 
   const matches = filterEsCommands(query);
   const current = matches[highlight];
@@ -32,7 +32,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
     setDQuery("");
     setDHi(0);
     setSelected([]);
-    setRevealed(null);
+    setPrinted(null);
     setView("detail");
   }
 
@@ -75,13 +75,16 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
         setView("list");
       } else if (key.upArrow) {
         setDHi((h) => (n ? (h - 1 + n) % n : 0));
-        setRevealed(null);
       } else if (key.downArrow) {
         setDHi((h) => (n ? (h + 1) % n : 0));
-        setRevealed(null);
       } else if (key.return) {
-        const it = dFiltered[dHi];
-        if (it) setRevealed((r) => (r === it.name ? null : it.name));
+        // Print the full command below for mouse-copy — no exit, no clipboard.
+        if (isNs) {
+          const sub = dFiltered[dHi]?.name;
+          if (sub) setPrinted(`elastic es ${cmd!.name} ${sub}`);
+        } else if (assembled) {
+          setPrinted(assembled);
+        }
       } else if (input === " " && !isNs) {
         const nm = dFiltered[dHi]?.name;
         if (nm)
@@ -91,11 +94,9 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
       } else if (key.backspace || key.delete) {
         setDQuery((q) => q.slice(0, -1));
         setDHi(0);
-        setRevealed(null);
       } else if (input && input !== " " && !key.ctrl && !key.meta && !key.tab) {
         setDQuery((q) => q + input);
         setDHi(0);
-        setRevealed(null);
       }
     }
   });
@@ -109,7 +110,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
       );
     }
     const visible = dFiltered.slice(start, start + DETAIL_WINDOW);
-    const revealedItem = revealed ? pool.find((p) => p.name === revealed) : null;
+    const current = dFiltered[dHi];
     return (
       <Box flexDirection="column" paddingY={1}>
         <Box>
@@ -118,8 +119,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
           </Text>
           <Text dimColor> — {isNs ? "subcommands" : "arguments"}</Text>
         </Box>
-        {!isNs && <Text color="yellow">$ {assembled}</Text>}
-        <Box marginTop={1}>
+        <Box>
           <Text color="magenta">{"> "}</Text>
           <Text>{dQuery}</Text>
           <Text inverse> </Text>
@@ -128,46 +128,61 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
             {dFiltered.length}/{pool.length}
           </Text>
         </Box>
-        <Box marginTop={1} flexDirection="column">
-          {visible.length === 0 && <Text dimColor>(no matches)</Text>}
-          {visible.map((it, i) => {
-            const idx = start + i;
-            const active = idx === dHi;
-            const checked = selected.includes(it.name);
-            return (
-              <Box key={it.name}>
-                <Text color={active ? "green" : undefined}>
+
+        <Box marginTop={1}>
+          {/* left: fuzzy list of flags / subcommands */}
+          <Box flexDirection="column" width={30} marginRight={2}>
+            {visible.length === 0 && <Text dimColor>(no matches)</Text>}
+            {visible.map((it, i) => {
+              const idx = start + i;
+              const active = idx === dHi;
+              const checked = selected.includes(it.name);
+              return (
+                <Text key={it.name} color={active ? "green" : undefined}>
                   {active ? "❯ " : "  "}
                   {!isNs && (checked ? "[x] " : "[ ] ")}
                   {isNs ? it.name : `--${it.name}`}
                 </Text>
-                {!isNs && (
-                  <Text dimColor>
-                    {" "}
-                    {`<${it.type}>`}
-                    {it.required ? " *" : ""}
-                  </Text>
-                )}
-              </Box>
-            );
-          })}
+              );
+            })}
+          </Box>
+
+          {/* right: description of the highlighted item */}
+          <Box
+            flexDirection="column"
+            borderStyle="round"
+            borderColor="gray"
+            paddingX={1}
+            width={48}
+          >
+            {current ? (
+              <>
+                <Text bold>
+                  {isNs ? current.name : `--${current.name}`}
+                  {!isNs && <Text dimColor> {`<${current.type}>`}</Text>}
+                  {!isNs && current.required ? <Text color="red"> *</Text> : null}
+                </Text>
+                <Box marginTop={1}>
+                  <Text>{current.summary || "(no description)"}</Text>
+                </Box>
+              </>
+            ) : (
+              <Text dimColor> </Text>
+            )}
+          </Box>
         </Box>
-        {revealedItem && (
-          <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
-            <Text>
-              <Text bold>
-                {isNs ? revealedItem.name : `--${revealedItem.name}`}
-              </Text>
-              {"  "}
-              {revealedItem.summary || "(no description)"}
-            </Text>
+
+        {printed && (
+          <Box marginTop={1}>
+            <Text color="yellow">$ {printed}</Text>
           </Box>
         )}
+
         <Box marginTop={1}>
           <Text dimColor>
             {isNs
-              ? "type filter · ↑/↓ move · enter describe · esc back"
-              : "type filter · ↑/↓ move · space toggle · enter describe · esc back"}
+              ? "type filter · ↑/↓ move · enter print command · esc back"
+              : "type filter · ↑/↓ move · space toggle · enter print command · esc back"}
           </Text>
         </Box>
       </Box>
