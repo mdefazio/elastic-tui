@@ -22,6 +22,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
   const [dQuery, setDQuery] = useState("");
   const [dHi, setDHi] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
+  const [revealed, setRevealed] = useState<string | null>(null);
 
   const matches = filterEsCommands(query);
   const current = matches[highlight];
@@ -31,6 +32,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
     setDQuery("");
     setDHi(0);
     setSelected([]);
+    setRevealed(null);
     setView("detail");
   }
 
@@ -40,7 +42,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
   const subs = cmd ? getSubcommands(cmd.name) : [];
   const isNs = flags.length === 0 && subs.length > 0;
   const pool = isNs
-    ? subs.map((s) => ({ name: s, type: "", required: false }))
+    ? subs.map((s) => ({ name: s.name, type: "", required: false, summary: s.summary }))
     : flags;
   const dq = dQuery.trim().toLowerCase();
   const dFiltered = pool.filter((it) => dq === "" || it.name.toLowerCase().includes(dq));
@@ -73,8 +75,13 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
         setView("list");
       } else if (key.upArrow) {
         setDHi((h) => (n ? (h - 1 + n) % n : 0));
+        setRevealed(null);
       } else if (key.downArrow) {
         setDHi((h) => (n ? (h + 1) % n : 0));
+        setRevealed(null);
+      } else if (key.return) {
+        const it = dFiltered[dHi];
+        if (it) setRevealed((r) => (r === it.name ? null : it.name));
       } else if (input === " " && !isNs) {
         const nm = dFiltered[dHi]?.name;
         if (nm)
@@ -84,9 +91,11 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
       } else if (key.backspace || key.delete) {
         setDQuery((q) => q.slice(0, -1));
         setDHi(0);
+        setRevealed(null);
       } else if (input && input !== " " && !key.ctrl && !key.meta && !key.tab) {
         setDQuery((q) => q + input);
         setDHi(0);
+        setRevealed(null);
       }
     }
   });
@@ -100,6 +109,7 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
       );
     }
     const visible = dFiltered.slice(start, start + DETAIL_WINDOW);
+    const revealedItem = revealed ? pool.find((p) => p.name === revealed) : null;
     return (
       <Box flexDirection="column" paddingY={1}>
         <Box>
@@ -142,11 +152,22 @@ export function EsCommands({ onBack }: { onBack: () => void }) {
             );
           })}
         </Box>
+        {revealedItem && (
+          <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
+            <Text>
+              <Text bold>
+                {isNs ? revealedItem.name : `--${revealedItem.name}`}
+              </Text>
+              {"  "}
+              {revealedItem.summary || "(no description)"}
+            </Text>
+          </Box>
+        )}
         <Box marginTop={1}>
           <Text dimColor>
             {isNs
-              ? "type filter · ↑/↓ move · esc back"
-              : "type filter · ↑/↓ move · space toggle (copy command above) · esc back"}
+              ? "type filter · ↑/↓ move · enter describe · esc back"
+              : "type filter · ↑/↓ move · space toggle · enter describe · esc back"}
           </Text>
         </Box>
       </Box>

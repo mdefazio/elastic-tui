@@ -11,9 +11,14 @@ export interface EsFlag {
   summary: string;
 }
 
+export interface EsSub {
+  name: string;
+  summary: string;
+}
+
 const schema = JSON.parse(
   readFileSync(new URL("./esFlags.json", import.meta.url), "utf8")
-) as { flags: Record<string, EsFlag[]>; subs: Record<string, string[]> };
+) as { flags: Record<string, EsFlag[]>; subs: Record<string, EsSub[]> };
 
 export function getFlags(name: string): EsFlag[] {
   const flags = schema.flags[name] ?? [];
@@ -23,7 +28,7 @@ export function getFlags(name: string): EsFlag[] {
   );
 }
 
-export function getSubcommands(name: string): string[] {
+export function getSubcommands(name: string): EsSub[] {
   return schema.subs[name] ?? [];
 }
 
