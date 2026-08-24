@@ -5,13 +5,13 @@
         {
           "standard": {
             "query": {
-              "multi_match": { "query": "space", "fields": ["title", "authors"] }
+              "multi_match": { "query": "{{query}}", "fields": ["title", "authors"] }
             }
           }
         },
         {
           "standard": {
-            "query": { "match": { "title": "revelation" } }
+            "query": { "match": { "description": "{{query}}" } }
           }
         }
       ],

@@ -1,7 +1,7 @@
 {
   "query": {
     "multi_match": {
-      "query": "brave new world",
+      "query": "{{query}}",
       "fields": ["title", "authors", "description"]
     }
   },

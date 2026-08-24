@@ -5,12 +5,14 @@ import { hasEsConnection } from "./context.js";
 import type { Command } from "./commands.js";
 import { CommandPalette } from "./flows/CommandPalette.js";
 import { CommandInfo } from "./flows/CommandInfo.js";
+import { EsCommands } from "./flows/EsCommands.js";
 import { BrowseIndices } from "./flows/BrowseIndices.js";
 import { ContextView } from "./flows/ContextView.js";
 import { Status } from "./flows/Status.js";
 
 type Route =
   | { k: "palette" }
+  | { k: "es" }
   | { k: "browse" }
   | { k: "context" }
   | { k: "status" }
@@ -25,6 +27,8 @@ export function App({ ctx }: { ctx: ElasticContext }) {
 
   function onSelect(cmd: Command) {
     switch (cmd.action) {
+      case "es":
+        return setRoute({ k: "es" });
       case "browse":
         return setRoute({ k: "browse" });
       case "context":
@@ -36,6 +40,8 @@ export function App({ ctx }: { ctx: ElasticContext }) {
     }
   }
 
+  if (route.k === "es")
+    return <EsCommands onBack={goHome} />;
   if (route.k === "browse") return <BrowseIndices ctx={ctx} onBack={goHome} />;
   if (route.k === "context") return <ContextView ctx={ctx} onBack={goHome} />;
   if (route.k === "status") return <Status ctx={ctx} onBack={goHome} />;

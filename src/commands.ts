@@ -3,7 +3,7 @@
 // the TUI does on select: routes to a built flow, or shows an info screen with
 // the equivalent CLI invocation for anything the prototype doesn't wire up.
 
-export type CommandAction = "browse" | "context" | "status" | "info";
+export type CommandAction = "es" | "browse" | "context" | "status" | "info";
 
 export interface Command {
   path: string; // e.g. "es", "es search", "cloud serverless"
@@ -17,18 +17,18 @@ export interface Command {
 export const COMMANDS: Command[] = [
   // Common
   {
+    path: "quick search",
+    desc: "Browse an index and run a saved query (opinionated TUI flow)",
+    group: "common",
+    action: "browse",
+  },
+  {
     path: "es",
     aliases: ["elasticsearch"],
     desc: "Elasticsearch APIs (search, indices, ingest, …)",
     group: "common",
-    action: "browse",
+    action: "es",
     subcommands: ["search", "indices", "cat", "cluster", "inference", "esql"],
-  },
-  {
-    path: "es search",
-    desc: "Run a search against an index",
-    group: "common",
-    action: "browse",
   },
   {
     path: "kb",
